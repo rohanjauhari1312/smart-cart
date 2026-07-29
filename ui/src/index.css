@@ -1,0 +1,74 @@
+:root {
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --border: #e5e2da;
+  --text: #1c1b18;
+  --text-muted: #6b6759;
+  --text-faint: #9a9587;
+  --accent: #1f6b4c;
+  --accent-dark: #164f38;
+  --accent-tint: #e8f1ec;
+  --warning: #b5620a;
+  --warning-tint: #fbf0e0;
+  --error: #a3271f;
+  --error-tint: #faeceb;
+  --nutri-a: #038141;
+  --nutri-b: #85bb2f;
+  --nutri-c: #fecb02;
+  --nutri-d: #ee8100;
+  --nutri-e: #e63e11;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(28, 27, 24, 0.04), 0 1px 12px rgba(28, 27, 24, 0.03);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+::selection {
+  background: var(--accent-tint);
+}

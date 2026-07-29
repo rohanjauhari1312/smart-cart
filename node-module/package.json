@@ -1,0 +1,15 @@
+{
+  "name": "nourish-grocery-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test:example": "node test/runExample.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5",
+    "ws": "^8.18.0"
+  }
+}

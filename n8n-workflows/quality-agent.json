@@ -1,0 +1,340 @@
+{
+  "name": "Grocery \u2014 Quality & Nutrition Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ae21d9bd-5d00-498b-bdd7-757d5e3dae45",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "qua-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "webhookId": "ae21d9bd-5d00-498b-bdd7-757d5e3dae45"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{ json: { category: body.category, notes: body.notes || '', diet: body.diet || null, quantity: body.quantity || 1 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "qua-0002-4000-8000-000000000002",
+      "name": "Parse Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-production-31ef.up.railway.app/webhook/26e2cea7-d52d-4a9e-88ad-8003255541bb",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ category: $json.category, notes: $json.notes }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        0
+      ],
+      "id": "qua-0009-4000-8000-000000000009",
+      "name": "Call Discovery Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ?? $json;\nconst text = typeof raw === 'string' ? raw : JSON.stringify(raw);\nif (!text || !text.trim()) {\n  return [{ json: { category: 'unknown', candidates: [], error: 'Discovery Agent returned an empty response for this category' } }];\n}\nconst start = text.indexOf('{');\nconst end = text.lastIndexOf('}');\nif (start === -1 || end === -1 || end < start) {\n  return [{ json: { category: 'unknown', candidates: [], error: 'Discovery Agent did not return JSON: ' + text.slice(0, 300) } }];\n}\nconst cleaned = text.slice(start, end + 1);\ntry {\n  return [{ json: JSON.parse(cleaned) }];\n} catch (e) {\n  return [{ json: { category: 'unknown', candidates: [], error: 'Malformed JSON from Discovery Agent: ' + e.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        0
+      ],
+      "id": "qua-0010-4000-8000-000000000010",
+      "name": "Parse Discovery Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "const discovery = $json;\nconst diet = $('Parse Request').item.json.diet;\nconst quantity = $('Parse Request').item.json.quantity;\nreturn [{ json: { chatInput: JSON.stringify({ category: discovery.category, notes: discovery.notes || '', candidates: discovery.candidates || [], error: discovery.error || null, diet: diet, quantity: quantity }) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "qua-0011-4000-8000-000000000011",
+      "name": "Build Chat Input"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {
+          "maxTokensToSample": 8192
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        368,
+        208
+      ],
+      "id": "qua-0003-4000-8000-000000000003",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "lPLfqs7YAcYL9Cg6",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Looks up a grocery product by name in Open Food Facts (free, no auth). Returns nutriScore (A-E), novaGroup (1-4, 4 = ultra-processed), and ingredientsText. Returns an error field if no match \u2014 never invent a score when this happens.",
+        "url": "=https://world.openfoodfacts.org/cgi/search.pl?search_terms={{ encodeURIComponent($fromAI('productName')) }}&search_simple=1&action=process&json=1&page_size=1",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        800,
+        224
+      ],
+      "id": "qua-0004-4000-8000-000000000004",
+      "name": "lookup_open_food_facts"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Searches the web for a product's nutrition facts and ingredients list. Use this ONLY as a fallback when lookup_open_food_facts had no match or no usable data for a candidate. Pass the candidate's brand + description as the search subject (e.g. 'Nissin Cup Noodles Protein Hot & Spicy Chicken nutrition facts ingredients'). Returns transcribed ingredients and nutrition facts as plain text, or exactly the string NOT_FOUND if nothing reliable turns up after searching \u2014 this happens for some products and is a normal, expected result, not an error.",
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"claude-haiku-4-5-20251001\", max_tokens: 1024, messages: [{ role: \"user\", content: \"Search the web for the nutrition facts and full ingredients list of this product: \\\"\" + $fromAI('productName') + \"\\\". Respond with the ingredients list and key nutrition facts (calories, fat, sugar, sodium, protein) as plain text. If you cannot find reliable ingredient/nutrition info after searching, respond with exactly: NOT_FOUND\" }], tools: [{ type: \"web_search_20250305\", name: \"web_search\", max_uses: 1 }] }) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        928,
+        224
+      ],
+      "id": "qua-0013-4000-8000-000000000013",
+      "name": "search_nutrition_online",
+      "credentials": {
+        "anthropicApi": {
+          "id": "lPLfqs7YAcYL9Cg6",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Quick first-pass keyword scan of an ingredients string against a short fixed list (chicken, beef, gelatin, milk, egg, etc.) for the user's diet. NOT authoritative \u2014 it will miss non-obvious animal-derived ingredients like rennet, isinglass, whey, or 'natural flavors'. Use this as a starting point only; your own reading of the full ingredient list is the final word on dietConflicts.",
+        "jsCode": "const MEAT_FISH = ['chicken','beef','pork','lamb','turkey','duck','bacon','ham','sausage','gelatin','lard','anchovy','shrimp','shellfish','fish','tuna','salmon','meat','veal'];\nconst ANIMAL = ['milk','cheese','butter','cream','whey','egg','honey','yogurt'];\nconst text = (query.ingredientsText || '').toLowerCase();\nconst diet = query.diet;\nlet excluded = [];\nif (diet === 'vegan') excluded = [...MEAT_FISH, ...ANIMAL];\nelse if (diet === 'veg' || diet === 'eggetarian') excluded = MEAT_FISH;\nelse if (diet === 'pescatarian') excluded = MEAT_FISH.filter(k => !['fish','tuna','salmon','anchovy','shrimp','shellfish'].includes(k));\nreturn JSON.stringify({ conflicts: excluded.filter(k => text.includes(k)) });"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        272
+      ],
+      "id": "qua-0006-4000-8000-000000000006",
+      "name": "check_diet_conflicts"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$json.chatInput}}",
+        "options": {
+          "systemMessage": "You are the Quality & Nutrition Agent for Nourish's grocery pipeline. Input is a single {category, notes, candidates, error, diet, quantity} — you handle ONE category per call (the orchestrator runs multiple calls in parallel for multiple categories, the same way Discovery Agent does). \"quantity\" is how many units of this category the user wants (default 1) — copy it through unchanged into your output, you don't use it for scoring or search.\n\nIf \"error\" is already set or \"candidates\" is empty (Discovery found nothing for this category), skip straight to the output — there's nothing to score, just pass category, notes, and error through unchanged with an empty candidates array. Don't call any tools in that case.\n\nFor EACH candidate in this category's candidates list: call lookup_open_food_facts with its description, once. If that has a match with usable data (ingredientsText, or nutriScore/novaGroup), use it — you're done for this candidate, skip the web fallback.\n\nIf lookup_open_food_facts had no match or no usable data, you may call search_nutrition_online once with the candidate's brand + description as the search subject — but only for the FIRST 2 candidates in this category that need it. Each web search adds a large amount of text to your context, and this list can have many candidates, so budget it carefully: after 2 web-search fallback calls in this category, stop calling search_nutrition_online entirely for any remaining candidates and just set their nutriScore, novaGroup, and ingredientsText to null — do not exceed 2 web searches per category under any circumstances, this is a hard limit, not a suggestion. If search_nutrition_online returns real ingredients/nutrition text, use it: set ingredientsText from it, and estimate novaGroup yourself from the ingredients (the same kind of judgment you already apply for diet-safety) — but leave nutriScore null unless the search result explicitly states a real Nutri-Score letter grade, which is rare outside Europe, don't estimate one yourself. Note in dietCheckNote that this candidate's data came from a web search, not Open Food Facts. If search_nutrition_online also returns NOT_FOUND or nothing usable, set nutriScore, novaGroup, and ingredientsText to null.\n\nDIET SEMANTICS \u2014 read carefully: \"nonveg\" and \"keto\" diets have NO ingredient exclusions at all. Meat, chicken, pork, fish, shellfish are all FINE for nonveg and keto \u2014 do not flag them as conflicts. Only \"veg\", \"vegan\", \"eggetarian\", and \"pescatarian\" have real exclusions (as defined below). A nonveg user's ramen containing chicken stock is NOT a diet conflict, that's completely normal for that diet.\n\nDIET CHECK \u2014 this is YOUR judgment call, not just a tool lookup. Read the full ingredientsText yourself and decide whether it's compatible with the given diet, using your own food knowledge, not only the check_diet_conflicts tool. That tool only matches a short fixed keyword list and will miss non-obvious animal-derived ingredients \u2014 things like gelatin, rennet, isinglass, carmine/cochineal, whey, casein, lard, tallow, anchovy paste, fish sauce, L-cysteine (often feather/hair-derived), or 'natural flavors' that are meat-based. You may call check_diet_conflicts as a quick first pass, but your final dietConflicts list must reflect your own reading of the ingredients, not just what the tool caught. If ingredientsText is missing entirely (lookup failed), say so explicitly rather than assuming the product is safe.\n\nALWAYS return the JSON structure below, no matter how many lookups failed or how incomplete the data is. If lookup_open_food_facts came up empty for a candidate, set nutriScore, novaGroup, and ingredientsText to null and explain in dietCheckNote \u2014 do NOT write a prose explanation instead of JSON, and do NOT refuse to respond. A partial JSON result with honest nulls is always the correct output, never plain text.\n\nNever alter, round, or invent a Nutri-Score, NOVA group, price, or transcribed label text \u2014 copy exact values from tool results, or null if nothing was found. Keep price, nutriScore, and novaGroup as separate fields \u2014 never combine them into one made-up quality number. If a candidate has an \"image\" field, copy it through unchanged into your output for that candidate \u2014 you don't use it for anything, just don't drop it.\n\nMACROS \u2014 when lookup_open_food_facts succeeds, its raw response includes a \"nutriments\" object with fields like proteins_100g and energy-kcal_100g (sometimes written energy_kcal_100g). Copy these through as proteinPer100g and caloriesPer100g (numbers, not strings) whenever present \u2014 this lets the order-level goal (e.g. \"high-protein\", visible in this category's \"notes\" if the user set one) actually get used downstream. If lookup_open_food_facts had no match, or the fields aren't in its response, or you only got data from search_nutrition_online (which won't have structured macros), set both to null \u2014 do not estimate or calculate these yourself from the ingredients list, only copy real numbers from the tool response.\n\nWhen done, respond with ONLY a valid JSON object. Your response must start with the character '{' as the very first character \u2014 no preamble sentence, no \"Based on my lookups...\", no summary before it. Just the JSON object, nothing else, for this ONE category (not wrapped in a \"results\" array \u2014 the orchestrator aggregates the per-category outputs itself):\n{\"category\":\"...\",\"notes\":\"...\",\"error\":null,\"quantity\":1,\"candidates\":[{\"productId\":\"...\",\"description\":\"...\",\"brand\":\"...\",\"price\":0,\"hasPrice\":true,\"image\":\"https://...\",\"nutriScore\":\"B\",\"novaGroup\":3,\"proteinPer100g\":8.5,\"caloriesPer100g\":410,\"ingredientsText\":\"...\",\"dietConflicts\":[],\"dietCheckNote\":\"brief note on how you determined this, or why ingredientsText was unavailable\"}]}\n\nWORKED EXAMPLES (diet judgment \u2014 this is the part check_diet_conflicts will miss):\n\ndiet=\"veg\", ingredientsText=\"wheat flour, water, salt, mono- and diglycerides\" \u2192 dietConflicts: []. Mono- and diglycerides CAN be animal-derived but are usually plant-derived in commercial bread and aren't flagged without stronger evidence \u2014 note this uncertainty in dietCheckNote rather than either ignoring it or over-flagging on a maybe.\n\ndiet=\"veg\", ingredientsText=\"parmesan cheese (milk, salt, enzymes, RENNET)\" \u2192 dietConflicts: [\"rennet\"], dietCheckNote: \"traditional parmesan uses animal rennet \u2014 check_diet_conflicts would have missed this, it's not in the fixed keyword list.\" This is exactly the kind of catch that justifies not trusting the tool alone.\n\ndiet=\"vegan\", ingredientsText=\"sugar, cocoa, soy lecithin, natural vanilla flavor\" \u2192 dietConflicts: [], dietCheckNote: \"no dairy/egg/meat terms present; soy lecithin and cocoa are plant-derived.\" Don't flag \"natural flavor\" reflexively \u2014 only flag it when there's actual reason to suspect an animal source (e.g. paired with a savory/meat product context), inventing a conflict is as wrong as missing a real one.\n\nlookup_open_food_facts has no match, search_nutrition_online(\"Nissin Cup Noodles Protein Hot & Spicy Chicken nutrition facts ingredients\") finds a real ingredients list and nutrition facts on the web \u2192 use it: ingredientsText set from the search result, novaGroup set to your own best-effort judgment from those ingredients, nutriScore left null, dietCheckNote: \"no Open Food Facts match; ingredients found via web search instead. novaGroup is my own estimate from the ingredients, not a database value \u2014 no Nutri-Score was found for this product.\"\n\nlookup_open_food_facts has no match, search_nutrition_online also returns NOT_FOUND \u2192 nutriScore: null, novaGroup: null, ingredientsText: null, dietConflicts: [], dietCheckNote: \"no ingredient data available from Open Food Facts or a web search \u2014 flagging as unknown rather than assuming safe.\" Do not default an unknown product to diet-safe.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "qua-0007-4000-8000-000000000007",
+      "name": "Quality & Nutrition Agent"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.output}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        800,
+        0
+      ],
+      "id": "qua-0008-4000-8000-000000000008",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Call Discovery Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Discovery Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Discovery Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Discovery Result": {
+      "main": [
+        [
+          {
+            "node": "Build Chat Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Chat Input": {
+      "main": [
+        [
+          {
+            "node": "Quality & Nutrition Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Quality & Nutrition Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "lookup_open_food_facts": {
+      "ai_tool": [
+        [
+          {
+            "node": "Quality & Nutrition Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_nutrition_online": {
+      "ai_tool": [
+        [
+          {
+            "node": "Quality & Nutrition Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_diet_conflicts": {
+      "ai_tool": [
+        [
+          {
+            "node": "Quality & Nutrition Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality & Nutrition Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

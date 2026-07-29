@@ -1,0 +1,383 @@
+{
+  "name": "Grocery Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "1b147e97-bf8a-4168-a599-3ef86bf0b7e0",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "orc-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "webhookId": "1b147e97-bf8a-4168-a599-3ef86bf0b7e0"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{ json: {\n  request: body.request || body.transcript || body.message || '',\n  userId: body.userId || body.user_id || 'test-user-123',\n  diet: body.diet || null\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "orc-0002-4000-8000-000000000002",
+      "name": "Parse Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-production-31ef.up.railway.app/webhook/0f9f6667-f17b-4b73-be79-d0cb06326723",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ request: $json.request, diet: $json.diet }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "orc-0003-4000-8000-000000000003",
+      "name": "Call Intent Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ?? $json;\nconst text = typeof raw === 'string' ? raw : JSON.stringify(raw);\nif (!text || !text.trim()) {\n  throw new Error('Intent Agent returned an empty response — check its own execution log.');\n}\nconst start = text.indexOf('{');\nconst end = text.lastIndexOf('}');\nif (start === -1 || end === -1 || end < start) {\n  throw new Error('Intent Agent did not return any JSON object. Raw text: ' + text.slice(0, 800));\n}\nconst cleaned = text.slice(start, end + 1);\ntry {\n  return [{ json: JSON.parse(cleaned) }];\n} catch (e) {\n  throw new Error('Intent Agent returned malformed JSON: ' + e.message + ' | extracted: ' + cleaned.slice(0, 800));\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "id": "orc-0010-4000-8000-000000000010",
+      "name": "Parse Intent"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-production-31ef.up.railway.app/webhook/ae21d9bd-5d00-498b-bdd7-757d5e3dae45",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ category: $json.category, notes: $json.notes, diet: $('Parse Request').item.json.diet, quantity: $json.quantity || 1 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 300000,
+          "batching": {
+            "batch": {
+              "batchSize": 10,
+              "batchInterval": 0
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        936,
+        0
+      ],
+      "id": "orc-0005-4000-8000-000000000005",
+      "name": "Call Quality Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ?? $json;\nconst text = typeof raw === 'string' ? raw : JSON.stringify(raw);\nif (!text || !text.trim()) {\n  return { json: { category: 'unknown', candidates: [], error: 'Quality Agent returned an empty response for this category' } };\n}\nconst start = text.indexOf('{');\nconst end = text.lastIndexOf('}');\nif (start === -1 || end === -1 || end < start) {\n  return { json: { category: 'unknown', candidates: [], error: 'Quality Agent did not return JSON: ' + text.slice(0, 300) } };\n}\nconst cleaned = text.slice(start, end + 1);\ntry {\n  return { json: JSON.parse(cleaned) };\n} catch (e) {\n  return { json: { category: 'unknown', candidates: [], error: 'Malformed JSON from Quality Agent: ' + e.message } };\n}",
+        "mode": "runOnceForEachItem"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "orc-0012-4000-8000-000000000012",
+      "name": "Parse Quality (per item)"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ztjfasighbpdmbmxrtvz.supabase.co/rest/v1/user_grocery_preferences?user_id=eq.{{ encodeURIComponent($('Parse Request').item.json.userId) }}&select=*",
+        "sendHeaders": true,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        936,
+        0
+      ],
+      "id": "orc-0015-4000-8000-000000000015",
+      "name": "Get User Preferences",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mK1QE7VwanhUVbQe",
+          "name": "Header Auth account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const nutriRank = { A: 1, B: 0.75, C: 0.5, D: 0.25, E: 0 };\nconst novaRank = { 1: 1, 2: 0.67, 3: 0.33, 4: 0 };\n\nconst results = $('Aggregate Quality Results').item.json.results || [];\nconst items = $input.all().map(i => i.json);\nconst maybeArray = items[0];\nconst prefsRow = Array.isArray(maybeArray) ? maybeArray[0] : (maybeArray && maybeArray.user_id ? maybeArray : null);\nconst prefs = prefsRow || { price_sensitivity: 0.5, quality_weight: 0.5, sessions_observed: 0, preferred_brands: {}, typical_quantities: {} };\nconst typicalQuantities = prefs.typical_quantities || {};\n\nfunction resolveQuantity(category, requestedQty) {\n  // requestedQty === 1 is ambiguous (could be an explicit '1' or just the default) — when the user\n  // has a learned typical quantity for this category, prefer that over the bare default.\n  if (requestedQty && requestedQty !== 1) return requestedQty;\n  const key = Object.keys(typicalQuantities).find(k => k.toLowerCase() === (category || '').toLowerCase());\n  return key ? typicalQuantities[key] : (requestedQty || 1);\n}\n\nconst scored = results.map(r => {\n  if (r.error || !r.candidates || r.candidates.length === 0) {\n    return { category: r.category, notes: r.notes, quantity: resolveQuantity(r.category, r.quantity), candidates: [], skippedReason: r.error || 'no candidates found' };\n  }\n  const eligible = r.candidates.filter(c => c.hasPrice && (!c.dietConflicts || c.dietConflicts.length === 0));\n  if (eligible.length === 0) {\n    return { category: r.category, notes: r.notes, quantity: resolveQuantity(r.category, r.quantity), candidates: [], skippedReason: 'no priced, diet-safe candidates found for this category' };\n  }\n  const notesLower = (r.notes || '').toLowerCase();\n  const wantsProtein = notesLower.includes('protein');\n  const wantsLowCal = notesLower.includes('calorie');\n\n  const prices = eligible.map(c => c.price);\n  const minPrice = Math.min(...prices);\n  const maxPrice = Math.max(...prices);\n  const proteinValues = eligible.map(c => c.proteinPer100g).filter(v => typeof v === 'number');\n  const maxProtein = proteinValues.length ? Math.max(...proteinValues) : null;\n  const calorieValues = eligible.map(c => c.caloriesPer100g).filter(v => typeof v === 'number');\n  const maxCalories = calorieValues.length ? Math.max(...calorieValues) : null;\n  const minCalories = calorieValues.length ? Math.min(...calorieValues) : null;\n\n  const scoredCandidates = eligible.map(c => {\n    const hasLabel = Boolean(c.ingredientsText && (c.nutriScore || c.novaGroup));\n    const nutriScore = nutriRank[c.nutriScore] ?? 0.5;\n    const novaScore = novaRank[c.novaGroup] ?? 0.5;\n    const qualityScore = (nutriScore + novaScore) / 2;\n    const priceScore = maxPrice > minPrice ? 1 - (c.price - minPrice) / (maxPrice - minPrice) : 1;\n    const rawUtility = (prefs.quality_weight * qualityScore) + (prefs.price_sensitivity * priceScore);\n    // unlabeled candidates are still shown, just ranked below labeled ones at equal price/quality odds\n    let utility = hasLabel ? rawUtility : rawUtility * 0.6;\n    // goal-based nudge: modest additive bonus so a stated goal shifts ranking without fully overriding price/quality\n    if (wantsProtein && typeof c.proteinPer100g === 'number' && maxProtein > 0) {\n      utility += 0.25 * (c.proteinPer100g / maxProtein);\n    }\n    if (wantsLowCal && typeof c.caloriesPer100g === 'number' && maxCalories > minCalories) {\n      utility += 0.25 * (1 - (c.caloriesPer100g - minCalories) / (maxCalories - minCalories));\n    }\n    return { ...c, utility: Number(utility.toFixed(4)), dataFlag: hasLabel ? null : 'no nutrition label found for this product — shown anyway, ranked below labeled options' };\n  }).sort((a, b) => b.utility - a.utility);\n  return { category: r.category, notes: r.notes, quantity: resolveQuantity(r.category, r.quantity), candidates: scoredCandidates, skippedReason: null };\n});\n\nreturn [{ json: {\n  results: scored,\n  preferences: { priceSensitivity: prefs.price_sensitivity, qualityWeight: prefs.quality_weight, sessionsObserved: prefs.sessions_observed || 0, preferredBrands: prefs.preferred_brands || {} },\n  budget: $('Parse Intent').item.json.budget,\n  userId: $('Parse Request').item.json.userId\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "orc-0016-4000-8000-000000000016",
+      "name": "Precompute Utility"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-production-31ef.up.railway.app/webhook/256dbdef-bb6f-45a7-9be7-e618b553afc7",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1144,
+        0
+      ],
+      "id": "orc-0006-4000-8000-000000000006",
+      "name": "Call Suggestion Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ?? $json;\nconst text = typeof raw === 'string' ? raw : JSON.stringify(raw);\nif (!text || !text.trim()) {\n  throw new Error('Suggestion Agent returned an empty response — check its own execution log.');\n}\nconst start = text.indexOf('{');\nconst end = text.lastIndexOf('}');\nif (start === -1 || end === -1 || end < start) {\n  throw new Error('Suggestion Agent did not return any JSON object. Raw text: ' + text.slice(0, 800));\n}\nconst cleaned = text.slice(start, end + 1);\ntry {\n  return [{ json: JSON.parse(cleaned) }];\n} catch (e) {\n  throw new Error('Suggestion Agent returned malformed JSON: ' + e.message + ' | extracted: ' + cleaned.slice(0, 800));\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "orc-0017-4000-8000-000000000017",
+      "name": "Parse Suggestions"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1352,
+        0
+      ],
+      "id": "orc-0008-4000-8000-000000000008",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "categories",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        624,
+        0
+      ],
+      "id": "orc-0018-4000-8000-000000000018",
+      "name": "Split Categories"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1144,
+        0
+      ],
+      "id": "orc-0021-4000-8000-000000000021",
+      "name": "Aggregate Quality Results"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Call Intent Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Intent Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Intent": {
+      "main": [
+        [
+          {
+            "node": "Split Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Quality Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Quality (per item)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Quality (per item)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Quality Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Quality Results": {
+      "main": [
+        [
+          {
+            "node": "Get User Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Preferences": {
+      "main": [
+        [
+          {
+            "node": "Precompute Utility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Precompute Utility": {
+      "main": [
+        [
+          {
+            "node": "Call Suggestion Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Suggestion Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Suggestions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Suggestions": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Categories": {
+      "main": [
+        [
+          {
+            "node": "Call Quality Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

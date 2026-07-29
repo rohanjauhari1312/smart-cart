@@ -1,0 +1,168 @@
+{
+  "name": "Grocery \u2014 Suggestion Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "256dbdef-bb6f-45a7-9be7-e618b553afc7",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        0
+      ],
+      "id": "bud-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "webhookId": "256dbdef-bb6f-45a7-9be7-e618b553afc7"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {
+          "maxTokensToSample": 8192
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        416,
+        208
+      ],
+      "id": "bud-0003-4000-8000-000000000003",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "lPLfqs7YAcYL9Cg6",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        688,
+        176
+      ],
+      "id": "bud-0004-4000-8000-000000000004",
+      "name": "calculator"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$json.chatInput}}",
+        "options": {
+          "systemMessage": "You are the Suggestion Agent for Nourish's grocery pipeline. Input is {results: [{category, notes, candidates, skippedReason, quantity}], preferences, budget, userId}. \"quantity\" is how many units of that category the user wants — copy it through unchanged into your output for that category, you don't use it for ranking or reasoning about tradeoffs (though you may mention it in passing, e.g. \"getting 3 of these\").\n\nEvery candidate already has a 'utility' score (0-1, higher is better) precomputed from this user's own price_sensitivity/quality_weight preferences and normalized price/quality within its category \u2014 candidates are already sorted best-first by utility, and any candidate missing a nutrition label already has a 'dataFlag' note on it and is ranked below labeled options. You do not need to compute or re-rank utility yourself, trust the precomputed order.\n\nYour job: for EACH category, present 3-4 candidates as suggestions for the user to choose from (not a single final pick \u2014 the user decides). Show as many as are available up to 4 \u2014 don't artificially narrow a category down to 2 just because that's traditional. If a category only has 1-2 candidates available, show what exists rather than withholding options.\n\nNever suppress a category to 'unavailable' just because some or all of its candidates lack a nutrition label \u2014 a flagged, unlabeled candidate is still a real, purchasable product and should be shown with its dataFlag note intact so the user can judge for themselves. Only use skippedReason exactly as given in the input, i.e. when that category's input candidates array is genuinely empty.\n\nFor each category, write one short reasoning note explaining the tradeoff between the options shown (e.g. \"the cheaper option skips the extra fiber the top pick has\", or \"no nutrition label was available for the last option, so it's shown last and flagged\"). If this category's notes mention a goal (e.g. \"high-protein\", \"lower-calorie\"), say plainly whether the top pick actually delivers on it (e.g. \"this one has the most protein per 100g among the options shown\") — don't just repeat the goal, confirm or flag the tradeoff.\n\nUse the calculator tool to compute the total if the user picked the #1 suggestion in every category, and flag clearly if that already exceeds budget (informational only \u2014 you are not enforcing budget at this stage, the user chooses).\n\nIf preferences.sessionsObserved is 0, note that suggestions aren't personalized yet since no order history exists.\n\nNever alter a candidate's price, nutriScore, novaGroup, utility, image, dataFlag, proteinPer100g, or caloriesPer100g \u2014 copy exact values, including passing the 'image' field through unchanged when present.\n\nWhen done, respond with ONLY a valid JSON object. Your response must start with the character '{' as the very first character \u2014 no preamble:\n{\"suggestions\":[{\"category\":\"...\",\"notes\":\"...\",\"quantity\":1,\"options\":[{\"productId\":\"...\",\"description\":\"...\",\"brand\":\"...\",\"price\":0,\"image\":\"https://...\",\"nutriScore\":\"B\",\"novaGroup\":3,\"proteinPer100g\":8.5,\"caloriesPer100g\":410,\"utility\":0.75,\"dataFlag\":null}],\"reasoning\":\"...\",\"skippedReason\":null}],\"estimatedTotalIfTopPickEverywhere\":0,\"budget\":100,\"overBudgetWarning\":false,\"usedPreferences\":{\"personalized\":true,\"priceSensitivity\":0.5,\"qualityWeight\":0.5,\"sessionsObserved\":3}}",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "bud-0006-4000-8000-000000000006",
+      "name": "Suggestion Agent"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.output}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        768,
+        0
+      ],
+      "id": "bud-0007-4000-8000-000000000007",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{ json: { chatInput: JSON.stringify(body) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "bud-0012-4000-8000-000000000012",
+      "name": "Parse Input"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Suggestion Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Suggestion Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Suggestion Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suggestion Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

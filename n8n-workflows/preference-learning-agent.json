@@ -1,0 +1,287 @@
+{
+  "name": "Grocery — Preference Learning Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "54a86fe9-ce7e-4b0d-b1e5-56cd666db928",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "lrn-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "webhookId": "54a86fe9-ce7e-4b0d-b1e5-56cd666db928"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst userId = body.userId || body.user_id || 'test-user-123';\nreturn [{ json: {\n  chatInput: JSON.stringify({ user_id: userId, latest_session: body }),\n  user_id: userId\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "lrn-0002-4000-8000-000000000002",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        416,
+        208
+      ],
+      "id": "lrn-0003-4000-8000-000000000003",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "lPLfqs7YAcYL9Cg6",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$json.chatInput}}",
+        "options": {
+          "systemMessage": "You are the Preference Learning Agent for Nourish's grocery pipeline. This is the ONLY agent whose job is to change how future orders get built — you are the learning element; the Budget & Cart-Fit Agent is the performance element that reads what you write.\n\nInput is {user_id, latest_session}. latest_session may include 'suggestionsShown' — the full set of ranked alternatives the user was actually offered per category before they picked. WHEN PRESENT, this is your strongest possible signal: you can see exactly which options were rejected in favor of the one chosen (e.g. user picked the 3rd-cheapest over the top-utility pick), which is far more reliable than inferring preference from a single auto-selected item. Weigh this explicit choice-among-alternatives signal more heavily than the general session-history pattern below.\n\nSTEP 1 — Call get_user_preferences and get_session_history to read this user's existing preference row (may not exist yet) and their last 10 sessions with cart items, to see the pattern across multiple orders, not just this one.\n\nSTEP 2 — Update your beliefs, conservatively:\n- price_sensitivity (0-1): did they consistently end up with the cheapest safe option even when quality would've cost little extra, or the opposite? Move this gradually, don't swing it to an extreme from one session.\n- quality_weight (0-1): did higher Nutri-Score/lower NOVA items get picked even at a price premium, across multiple sessions?\n- preferred_brands: only record a brand as preferred if it appears for the same category across 2+ different sessions — a single occurrence is not a preference, it's a coincidence.\n- frequently_ordered_categories: categories appearing in most of their recent sessions.\n- typical_quantities: for each category with a clear, repeated quantity pattern across 2+ sessions (e.g. always orders 3 ramen, always 1 oat milk), record that number. A single session's quantity is not enough — same 2+ threshold as preferred_brands. Nudge gradually toward the observed average rather than jumping straight to the latest session's number, and never invent a quantity for a category you haven't seen at least twice.\n- sessions_observed: increment by 1.\n- notes: one or two short factual observations, not speculation dressed as fact.\n\nIf this is the first session ever observed for this user, do not invent strong preferences from a single data point — write price_sensitivity=0.5, quality_weight=0.5, sessions_observed=1, and note that this is the first observation.\n\nSTEP 3 — Call upsert_user_preferences with the updated values for this user_id. Never call any other write tool.\n\nWhen done, respond with ONLY a valid JSON object, no other text:\n{\"user_id\":\"...\",\"updated\":true,\"priceSensitivity\":0.5,\"qualityWeight\":0.5,\"preferredBrands\":{},\"typicalQuantities\":{},\"sessionsObserved\":1,\"notes\":\"...\"}\n\nWORKED EXAMPLES:\n\nExisting row: price_sensitivity=0.5, quality_weight=0.5, sessions_observed=2. History shows both of the last 2 sessions picked the highest-NutriScore ramen even though it cost $2-3 more than the cheapest option, and \"Nissin\" appears as the ramen brand in both. This session: same pattern again (3rd time).\nGood update: quality_weight nudged up to ~0.6 (gradual, not jumped to 0.9), preferred_brands: {\"ramen\": \"Nissin\"} (now confirmed 3 times, well past the 2+ threshold), sessions_observed=3, notes: \"Consistently pays a premium for quality on ramen; Nissin preferred across 3 orders.\"\nBad update (overfitting — avoid): quality_weight jumped to 1.0 because of one strong pattern, or preferred_brands added for every product seen in just this one session.\n\nFirst-ever session for a user, no existing preferences row: latest_session shows they picked the cheapest option in every category.\nGood update: price_sensitivity=0.5, quality_weight=0.5, sessions_observed=1, notes: \"First session — picked cheapest across the board, but too early to call this a stable preference.\" Do NOT set price_sensitivity to 0.9 from a single session; one data point could just mean the budget was tight that time, not that they always prefer cheap.\n\nExisting row: preferred_brands={\"dumplings\": \"Trader Joe's\"} from 4 prior sessions. This session, Trader Joe's dumplings weren't in stock and a different brand was picked instead (forced by availability, per the Budget Agent's reasoning).\nGood update: keep preferred_brands as-is (\"Trader Joe's\" for dumplings) — a single forced substitution due to stock, not a change in preference, shouldn't overwrite 4 sessions of real signal. Note it in `notes` as a one-off, don't erase the pattern.\n\nExisting row: no typical_quantities yet. History shows the last 3 sessions all included \"ramen\" with quantity 3 each time, and this session also picked quantity 3 for ramen.\nGood update: typical_quantities: {\"ramen\": 3} (confirmed 4 times, well past the 2+ threshold), notes mentions the consistent quantity. Bad update: recording a quantity from only this one session, or recording a quantity for a category seen just once.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "lrn-0005-4000-8000-000000000005",
+      "name": "Preference Learning Agent"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.output}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        752,
+        0
+      ],
+      "id": "lrn-0006-4000-8000-000000000006",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Reads this user's existing user_grocery_preferences row (may not exist yet — empty array is normal for a first-ever session).",
+        "method": "GET",
+        "url": "=https://ztjfasighbpdmbmxrtvz.supabase.co/rest/v1/user_grocery_preferences?user_id=eq.{{ encodeURIComponent($fromAI('user_id')) }}&select=*",
+        "sendHeaders": false,
+        "headerParameters": {
+          "parameters": []
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        576,
+        100
+      ],
+      "id": "lrn-0007-4000-8000-000000000007",
+      "name": "get_user_preferences",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mK1QE7VwanhUVbQe",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Reads this user's last 10 grocery_sessions, each with its nested grocery_cart_items, ordered most recent first. Use this to see the pattern across multiple orders, not just the latest one.",
+        "method": "GET",
+        "url": "=https://ztjfasighbpdmbmxrtvz.supabase.co/rest/v1/grocery_sessions?user_id=eq.{{ encodeURIComponent($fromAI('user_id')) }}&select=*,grocery_cart_items(*)&order=created_at.desc&limit=10",
+        "sendHeaders": false,
+        "headerParameters": {
+          "parameters": []
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        576,
+        288
+      ],
+      "id": "lrn-0008-4000-8000-000000000008",
+      "name": "get_session_history",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mK1QE7VwanhUVbQe",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Upserts (insert or update) the user_grocery_preferences row for this user_id with updated price_sensitivity, quality_weight, preferred_brands (object), frequently_ordered_categories (array), typical_quantities (object mapping category to a typical quantity number), notes, sessions_observed.",
+        "method": "POST",
+        "url": "https://ztjfasighbpdmbmxrtvz.supabase.co/rest/v1/user_grocery_preferences?on_conflict=user_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $fromAI('user_id'), price_sensitivity: $fromAI('price_sensitivity'), quality_weight: $fromAI('quality_weight'), preferred_brands: $fromAI('preferred_brands', 'JSON object mapping category to preferred brand', 'json'), frequently_ordered_categories: $fromAI('frequently_ordered_categories', 'JSON array of category strings', 'json'), typical_quantities: $fromAI('typical_quantities', 'JSON object mapping category to typical quantity number', 'json'), notes: $fromAI('notes'), sessions_observed: $fromAI('sessions_observed'), updated_at: new Date().toISOString() }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        576,
+        476
+      ],
+      "id": "lrn-0009-4000-8000-000000000009",
+      "name": "upsert_user_preferences",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mK1QE7VwanhUVbQe",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Preference Learning Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Preference Learning Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preference Learning Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_user_preferences": {
+      "ai_tool": [
+        [
+          {
+            "node": "Preference Learning Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_session_history": {
+      "ai_tool": [
+        [
+          {
+            "node": "Preference Learning Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upsert_user_preferences": {
+      "ai_tool": [
+        [
+          {
+            "node": "Preference Learning Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

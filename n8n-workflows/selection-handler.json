@@ -1,0 +1,169 @@
+{
+  "name": "Grocery \u2014 Selection Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f6f6f4c0-1ba0-4316-98b4-39cfa9f969ec",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "sel-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "webhookId": "f6f6f4c0-1ba0-4316-98b4-39cfa9f969ec"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst userId = body.userId || body.user_id || 'test-user-123';\nconst requestText = body.requestText || body.request || '';\nconst budget = body.budget ?? null;\nconst suggestions = body.suggestions || [];\nconst picks = body.picks || [];\n\nconst selections = [];\nconst reasoning = [];\n\nfor (const pick of picks) {\n  const quantity = pick.quantity || 1;\n  const catSuggestion = suggestions.find(s => s.category === pick.category);\n  if (!catSuggestion) {\n    selections.push({ category: pick.category, item: null, quantity, skippedReason: 'category not found in original suggestions' });\n    continue;\n  }\n  const chosen = (catSuggestion.options || []).find(o => o.productId === pick.productId);\n  if (!chosen) {\n    selections.push({ category: pick.category, item: null, quantity, skippedReason: 'chosen productId not found among shown options' });\n    continue;\n  }\n  selections.push({ category: pick.category, item: chosen, quantity, skippedReason: null });\n  reasoning.push(`User picked \"${chosen.description}\" x${quantity} for ${pick.category}.`);\n}\n\nconst total = selections.reduce((sum, s) => sum + (s.item ? s.item.price * s.quantity : 0), 0);\nconst freeDeliveryMinimum = 35;\n\nreturn [{ json: {\n  selections,\n  total: Number(total.toFixed(2)),\n  budget,\n  freeDeliveryMinimum,\n  metFreeDeliveryMinimum: total >= freeDeliveryMinimum,\n  reasoning,\n  userId,\n  requestText,\n  suggestionsShown: suggestions\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "sel-0002-4000-8000-000000000002",
+      "name": "Resolve Selections"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-production-31ef.up.railway.app/webhook/df633268-d513-471d-9edb-c8eb7414decc",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ selections: $json.selections, total: $json.total, budget: $json.budget, freeDeliveryMinimum: $json.freeDeliveryMinimum, metFreeDeliveryMinimum: $json.metFreeDeliveryMinimum, reasoning: $json.reasoning, userId: $json.userId, requestText: $json.requestText }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "sel-0003-4000-8000-000000000003",
+      "name": "Call Cart Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ?? $json;\nconst text = typeof raw === 'string' ? raw : JSON.stringify(raw);\nif (!text || !text.trim()) {\n  throw new Error('Cart Agent returned an empty response \u2014 check its own execution log.');\n}\nconst start = text.indexOf('{');\nconst end = text.lastIndexOf('}');\nif (start === -1 || end === -1 || end < start) {\n  throw new Error('Cart Agent did not return any JSON object. Raw text: ' + text.slice(0, 800));\n}\nconst cleaned = text.slice(start, end + 1);\ntry {\n  return [{ json: JSON.parse(cleaned) }];\n} catch (e) {\n  throw new Error('Cart Agent returned malformed JSON: ' + e.message + ' | extracted: ' + cleaned.slice(0, 800));\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "sel-0004-4000-8000-000000000004",
+      "name": "Parse Cart"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        832,
+        -80
+      ],
+      "id": "sel-0005-4000-8000-000000000005",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-production-31ef.up.railway.app/webhook/54a86fe9-ce7e-4b0d-b1e5-56cd666db928",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ userId: $('Resolve Selections').item.json.userId, sessionId: $json.sessionId, selections: $('Resolve Selections').item.json.selections, suggestionsShown: $('Resolve Selections').item.json.suggestionsShown, total: $json.total, budget: $json.budget }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        832,
+        80
+      ],
+      "id": "sel-0006-4000-8000-000000000006",
+      "name": "Call Preference Learning Agent (fire-and-forget)"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Resolve Selections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Selections": {
+      "main": [
+        [
+          {
+            "node": "Call Cart Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Cart Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Cart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Cart": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call Preference Learning Agent (fire-and-forget)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
