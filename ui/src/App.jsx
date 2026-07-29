@@ -105,7 +105,10 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <span className="app-header__mark">Smart Cart</span>
-        <span className="app-header__tag">real cart writes</span>
+        <div className="app-header__right">
+          <span className="app-header__tag">real cart writes</span>
+          <img src="/kroger.jpg" alt="Kroger" className="app-header__logo" />
+        </div>
       </header>
 
       <main className="app-main">
