@@ -5,7 +5,7 @@ function defaultPicks(suggestions) {
   const picks = {};
   for (const cat of suggestions) {
     if (!cat.skippedReason && cat.options?.length > 0) {
-      picks[cat.category] = cat.options[0].productId;
+      picks[cat.category] = [cat.options[0].productId];
     }
   }
   return picks;
@@ -25,21 +25,29 @@ export default function SuggestionsView({ data, onSubmit, onStartOver }) {
   const [confirming, setConfirming] = useState(false);
 
   const pickableCategories = data.suggestions.filter((c) => !c.skippedReason);
-  const allPicked = pickableCategories.every((c) => picks[c.category]);
+  const allPicked = pickableCategories.every((c) => (picks[c.category] || []).length > 0);
 
   const runningTotal = useMemo(() => {
     let total = 0;
     for (const cat of pickableCategories) {
-      const productId = picks[cat.category];
-      if (!productId) continue;
-      const opt = cat.options.find((o) => o.productId === productId);
-      if (opt) total += Number(opt.price) * (quantities[cat.category] || 1);
+      const productIds = picks[cat.category] || [];
+      const qty = quantities[cat.category] || 1;
+      for (const productId of productIds) {
+        const opt = cat.options.find((o) => o.productId === productId);
+        if (opt) total += Number(opt.price) * qty;
+      }
     }
     return total;
   }, [picks, quantities, pickableCategories]);
 
-  function selectOption(category, productId) {
-    setPicks((prev) => ({ ...prev, [category]: productId }));
+  function toggleOption(category, productId) {
+    setPicks((prev) => {
+      const current = prev[category] || [];
+      const next = current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId];
+      return { ...prev, [category]: next };
+    });
   }
 
   function setQuantity(category, qty) {
@@ -52,11 +60,13 @@ export default function SuggestionsView({ data, onSubmit, onStartOver }) {
   }
 
   function handleConfirm() {
-    const picksArray = pickableCategories.map((c) => ({
-      category: c.category,
-      productId: picks[c.category],
-      quantity: quantities[c.category] || 1,
-    }));
+    const picksArray = pickableCategories.flatMap((c) =>
+      (picks[c.category] || []).map((productId) => ({
+        category: c.category,
+        productId,
+        quantity: quantities[c.category] || 1,
+      }))
+    );
     onSubmit(picksArray);
   }
 
@@ -144,9 +154,8 @@ export default function SuggestionsView({ data, onSubmit, onStartOver }) {
                     <OptionCard
                       key={opt.productId}
                       option={opt}
-                      name={`pick-${cat.category}`}
-                      selected={picks[cat.category] === opt.productId}
-                      onSelect={(productId) => selectOption(cat.category, productId)}
+                      selected={(picks[cat.category] || []).includes(opt.productId)}
+                      onToggle={(productId) => toggleOption(cat.category, productId)}
                       isTopPick={i === 0}
                     />
                   ))}

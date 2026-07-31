@@ -785,6 +785,17 @@
   font-size: 16px;
 }
 
+.option-card__kroger-link {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  width: fit-content;
+}
+
+.option-card__kroger-link:hover {
+  text-decoration: underline;
+}
+
 .option-card__scores {
   display: flex;
   flex-wrap: wrap;

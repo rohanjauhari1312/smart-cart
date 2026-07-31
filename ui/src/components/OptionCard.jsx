@@ -7,17 +7,17 @@ const NOVA_LABEL = {
   4: "ultra-processed",
 };
 
-export default function OptionCard({ option, name, selected, onSelect, isTopPick }) {
+export default function OptionCard({ option, selected, onToggle, isTopPick }) {
   const nutriLetter = (option.nutriScore || "").toUpperCase();
   const nutriVar = NUTRI_VAR[nutriLetter];
+  const krogerUrl = `https://www.kroger.com/search?query=${encodeURIComponent(option.productId)}`;
 
   return (
     <label className={`option-card${selected ? " option-card--selected" : ""}`}>
       <input
-        type="radio"
-        name={name}
+        type="checkbox"
         checked={selected}
-        onChange={() => onSelect(option.productId)}
+        onChange={() => onToggle(option.productId)}
         className="option-card__radio"
       />
       <div className="option-card__body">
@@ -32,6 +32,15 @@ export default function OptionCard({ option, name, selected, onSelect, isTopPick
         </div>
         <p className="option-card__desc">{option.description}</p>
         <div className="option-card__price">${Number(option.price).toFixed(2)}</div>
+        <a
+          href={krogerUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="option-card__kroger-link"
+          onClick={(e) => e.stopPropagation()}
+        >
+          View on Kroger ↗
+        </a>
         <div className="option-card__scores">
           {nutriVar && (
             <span
