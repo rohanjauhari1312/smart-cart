@@ -1,6 +1,7 @@
-import { FAVORITE_FOOD_OPTIONS } from "../lib/preferences";
+import { getFavoriteFoodOptions } from "../lib/preferences";
 
-export default function FavoriteFoodsPicker({ value, onChange }) {
+export default function FavoriteFoodsPicker({ value, onChange, diet }) {
+  const options = getFavoriteFoodOptions(diet);
   const selected = new Map(value.map((f) => [f.name, f.qty]));
 
   function toggle(name) {
@@ -18,7 +19,7 @@ export default function FavoriteFoodsPicker({ value, onChange }) {
 
   return (
     <div className="favorite-foods">
-      {FAVORITE_FOOD_OPTIONS.map((name) => {
+      {options.map((name) => {
         const qty = selected.get(name);
         const isSelected = qty != null;
         return (

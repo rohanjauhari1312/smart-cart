@@ -17,28 +17,47 @@ export const GOALS = [
   { value: "none", label: "No specific goal", note: "" },
 ];
 
-export const FAVORITE_FOOD_OPTIONS = [
-  "Ramen",
-  "Rice",
-  "Eggs",
-  "Milk",
-  "Oat milk",
-  "Yogurt",
-  "Bread",
-  "Chicken",
-  "Ground beef",
-  "Tofu",
-  "Bananas",
-  "Apples",
-  "Spinach",
-  "Cheese",
-  "Pasta",
-  "Dumplings",
-  "Frozen pizza",
-  "Coffee",
-  "Orange juice",
-  "Cereal",
+// tags: "meat", "fish", "egg", "dairy" — omitted for plant/neutral items.
+// Mirrors the diet semantics the Quality & Nutrition agent uses downstream:
+// veg/vegan/eggetarian/pescatarian have real exclusions, nonveg/keto don't.
+const FAVORITE_FOOD_ITEMS = [
+  { name: "Ramen" },
+  { name: "Rice" },
+  { name: "Eggs", tags: ["egg"] },
+  { name: "Milk", tags: ["dairy"] },
+  { name: "Oat milk" },
+  { name: "Yogurt", tags: ["dairy"] },
+  { name: "Bread" },
+  { name: "Chicken", tags: ["meat"] },
+  { name: "Ground beef", tags: ["meat"] },
+  { name: "Tofu" },
+  { name: "Bananas" },
+  { name: "Apples" },
+  { name: "Spinach" },
+  { name: "Cheese", tags: ["dairy"] },
+  { name: "Pasta" },
+  { name: "Dumplings" },
+  { name: "Frozen pizza" },
+  { name: "Coffee" },
+  { name: "Orange juice" },
+  { name: "Cereal" },
 ];
+
+const DIET_EXCLUDED_TAGS = {
+  veg: ["meat", "fish", "egg"],
+  vegan: ["meat", "fish", "egg", "dairy"],
+  eggetarian: ["meat", "fish"],
+  pescatarian: ["meat"],
+  nonveg: [],
+  keto: [],
+};
+
+export function getFavoriteFoodOptions(diet) {
+  const excluded = DIET_EXCLUDED_TAGS[diet] ?? [];
+  return FAVORITE_FOOD_ITEMS.filter((item) => !(item.tags ?? []).some((t) => excluded.includes(t))).map(
+    (item) => item.name
+  );
+}
 
 export function getStoredPreferences() {
   const raw = localStorage.getItem(STORAGE_KEY);

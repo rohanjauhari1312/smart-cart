@@ -1,7 +1,7 @@
 import { useState } from "react";
 import TagInput from "./TagInput";
 import FavoriteFoodsPicker from "./FavoriteFoodsPicker";
-import { DIETS, GOALS, setStoredPreferences } from "../lib/preferences";
+import { DIETS, GOALS, getFavoriteFoodOptions, setStoredPreferences } from "../lib/preferences";
 
 export default function PreferencesForm({ initial, onSubmit }) {
   const [diet, setDiet] = useState(initial?.diet ?? "veg");
@@ -32,7 +32,15 @@ export default function PreferencesForm({ initial, onSubmit }) {
 
       <label className="field">
         <span className="field__label">Diet</span>
-        <select value={diet} onChange={(e) => setDiet(e.target.value)}>
+        <select
+          value={diet}
+          onChange={(e) => {
+            const nextDiet = e.target.value;
+            setDiet(nextDiet);
+            const allowed = new Set(getFavoriteFoodOptions(nextDiet));
+            setFavoriteFoods((prev) => prev.filter((f) => allowed.has(f.name)));
+          }}
+        >
           {DIETS.map((d) => (
             <option key={d.value} value={d.value}>
               {d.label}
@@ -82,7 +90,7 @@ export default function PreferencesForm({ initial, onSubmit }) {
 
       <div className="field">
         <span className="field__label">Your usual order</span>
-        <FavoriteFoodsPicker value={favoriteFoods} onChange={setFavoriteFoods} />
+        <FavoriteFoodsPicker value={favoriteFoods} onChange={setFavoriteFoods} diet={diet} />
         <span className="field__hint">
           Pick what you buy regularly and set how many — these auto-fill your next order so you don't have to type them in every time
         </span>
