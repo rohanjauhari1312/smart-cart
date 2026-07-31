@@ -60,8 +60,8 @@
     },
     {
       "parameters": {
-        "toolDescription": "Searches Kroger's real product catalog for a search term. Returns candidate products with productId, description, brand, price, promoPrice, size, and hasPrice. Request more results than you need (limit 8) — downstream scoring drops any candidate with no ingredients/nutrition label data available, so a wider net here means more usable options survive that filter.",
-        "url": "=https://api.kroger.com/v1/products?filter.term={{ encodeURIComponent($fromAI('term')) }}&filter.limit={{ $fromAI('limit', '', 'number') || 8 }}&filter.locationId=01400513",
+        "toolDescription": "Searches Kroger's real product catalog for a search term. Returns candidate products with productId, description, brand, price, promoPrice, size, and hasPrice. Request more results than you need (limit 5) \u2014 downstream scoring drops any candidate with no ingredients/nutrition label data available, so a wider net here means more usable options survive that filter.",
+        "url": "=https://api.kroger.com/v1/products?filter.term={{ encodeURIComponent($fromAI('term')) }}&filter.limit={{ $fromAI('limit', '', 'number') || 5 }}&filter.locationId=01400513",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "options": {
